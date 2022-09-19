@@ -1,0 +1,453 @@
+%input
+sigma=0.027/2;                                                               % solidaty ratio
+seta_o_up=4*(pi/180)
+H= 0.16
+delta_seta =2*(pi/180)
+omga= 26
+C_root = 0.294
+taper_ratio = 0.388                                                            %0.645
+R= 3.81;                                                                   %rotor redius
+Nb =2
+R_cut_factor = 0.13
+seta_twist=0*(pi/180);                                                     %twist angle
+roh = 1.225
+Mioh = 0.0000181206
+
+                        
+                                      %%%%parameter%%%%%
+
+Cl_alpha=2*pi;                                                             % airfoil coefficient of lift slope
+seta_o_down=seta_o_up+delta_seta;                                          %pitch angle downstream rotor
+R_cut=R_cut_factor*R;                                                      %rotor cut off
+N =400                                                                     %descritization elements
+NN=10
+b = R-R_cut                                                                %blade span
+delta_r =(b/N)                               
+taper_slope = ((C_root*taper_ratio)-C_root)/b
+
+B_loss=(1-((C_root*(1+(0.7*taper_ratio)))/(1.5*R)))
+
+K =1.15
+
+
+if H < 0.35
+K_int_upstream =1.3
+else
+    K_int_upstream =1
+end
+k_br =0.5
+
+
+                                   %%%%%%%upstream rotor %%%%%%%
+ for i=1:N
+     r_up(i)=((delta_r*i))/b;
+     seta_up(i)= seta_o_up+ r_up(i)*seta_twist;
+     c_up(i)=(C_root)+(taper_slope*r_up(i)*R)
+      Re_up_T(i) = (roh*(omga* (((r_up(i))*b)+R_cut))*c_up(i))/Mioh
+
+                                        %%Lift slope%%
+     if seta_up(i) <= 2*(pi/180)
+         if Re_up_T(i) < 70000
+             Cl_alpha_up(i)= ((0.2325/70000)* Re_up_T(i))*180/pi
+         else Cl_alpha_up(i)=((0.21+(20000*0.7/Re_up_T(i)))/2)*180/pi
+         end
+
+     elseif  2*(pi/180)< seta_up(i) <= 4*(pi/180)
+         if Re_up_T(i) < 70000
+             Cl_alpha_up(i)= ((0.152/70000)* Re_up_T(i))*180/pi
+         elseif 70000 <= Re_up_T(i) <= 150000 
+             Cl_alpha_up(i)=0.152*180/pi
+         else Cl_alpha_up(i)=((0.21+(20000*0.7/Re_up_T(i)))/2)*180/pi
+         end
+         
+     else Cl_alpha_up(i)= Cl_alpha
+
+     end  
+
+                    %%upstream rotor performance parameter
+
+     Lamda_up(i)=((Cl_alpha_up(i)*sigma)/16)*((sqrt (1+((32*seta_up(i)*r_up(i))/(Cl_alpha_up(i)*sigma))))-1);
+     B_up(i) = 1-(Lamda_up(i)*sqrt(2)/Nb)
+     %B_up(i)=1-((1-B_loss)*((r_up(i))^2)*1.5)
+     delta_Ct_up(i)=((Cl_alpha_up(i)*sigma)/2)*((seta_up(i)*(r_up(i)*B_up(i))^2)-(Lamda_up(i)*r_up(i)/B_up(i)))*(delta_r/R) ;
+     %delta_Ct_up(i)=((Cl_alpha_up(i)*sigma)/2)*((seta_up(i)*(r_up(i))^2)-(Lamda_up(i)*r_up(i)/B_up(i)))*(delta_r/R)
+     
+     
+     Cl_up(i)=Cl_alpha_up(i)*(seta_up(i)-(Lamda_up(i)/r_up(i)));
+     
+    
+    
+     V_up(i)= sqrt ((omga* (((r_up(i))*b)+R_cut))^2+(Lamda_up(i)*omga* (((r_up(i))*b)+R_cut))^2)
+     Re_up(i)= (roh*V_up(i)*c_up(i))/Mioh
+     Cd_0_up(i)=2/((Re_up(i)*0.75/1000)+35)
+     
+     cdup_1_o (i) =(Lamda_up(i)/r_up(i))*pi/180
+     cdup_2_o (i) =(seta_up(i)-cdup_1_o (i))
+     Cd_o_up(i) = (Cd_0_up(i)+(0.02*cdup_2_o (i))+(0.4*(cdup_2_o (i))^2))*(delta_r/R);
+     CQ_o_up(i)=(k_br*sigma/4)*Cd_o_up(i)
+     seta_o_up = seta_up(i);
+ end
+ total_delta_Ct_up =(sum (delta_Ct_up))
+ Ct_up=total_delta_Ct_up*Nb
+ B_up_tot = 1-((sqrt(Ct_up))/Nb)
+ %CT_up= Ct_up* B_up_tot
+ CT_up= Ct_up/K_int_upstream
+ delta_CQ_i_up=delta_Ct_up.*Lamda_up
+ CQ_i_up = sum (delta_CQ_i_up)
+ total_CQ_o_up= sum (CQ_o_up)
+ %cQ_up=(CQ_i_up*Nb*(K+B_up_tot)*K_int_upstream)+(total_CQ_o_up*delta_r*Nb) 
+ 
+ %cQ_up=(CQ_i_up*Nb*(K+(1/B_up_tot))*K_int_upstream)+(total_CQ_o_up*delta_r*Nb)
+ cQ_up=(CQ_i_up*Nb*(K)*K_int_upstream)+(total_CQ_o_up*Nb)
+
+ CT_up_old = CT_up
+
+
+for i=1:NN
+
+    CT_up(i)=CT_up_old
+
+                                  %%%%%%% Downstream rotor %%%%%%%
+
+
+                                         
+K_1_tip = 0.25*((CT_up(i)/sigma)+(0.001*seta_twist))
+Zeta_passage = 2*pi/Nb
+Z_Tip_passage = K_1_tip*Zeta_passage
+K_2_tip = (1+(0.01*seta_twist)) * sqrt(Ct_up)
+
+A_tip = 0.145+(27*CT_up(i))
+if Z_Tip_passage > H
+    Zeta_age= (H/K_1_tip)*180/pi
+    
+else 
+    Zeta_age= (((H-Z_Tip_passage)/K_2_tip)+(Zeta_passage))*180/pi
+    
+end
+
+
+Zeta_age_vena = (180/pi)*-log((0.71-0.702)/(1-0.702))/(0.145+(27*CT_up(i)))
+Y_tip_venna= 0.702+(1-0.702)*exp(-A_tip*(Zeta_age_vena*pi/180))
+z_venna = Z_Tip_passage + K_2_tip*((Zeta_age_vena*pi/180)-Zeta_passage)
+
+if Zeta_age< Zeta_age_vena
+   
+    
+    Y_tip= 0.702+(1-0.702)*exp(-A_tip*(Zeta_age*pi/180))
+
+else
+
+    Y_tip_c= Y_tip_venna +((0.2^(1/A_tip))*exp(A_tip*(Zeta_age*pi/180)))
+
+    if Y_tip_c<1
+        Y_tip=Y_tip_c
+    else
+        Y_tip=1
+    end
+end
+
+x =(b-(1-Y_tip)*R)/b
+X= round(x*N)
+y=X/N
+
+v_ind_up=(Lamda_up(N))*omga*R
+                                          
+if Y_tip < 1
+v_center= v_ind_up/((Y_tip^3)*(1+v_ind_up))
+v_root= v_center+((v_ind_up-v_center)*R_cut_factor/Y_tip)
+K_int_downstream_slope= (0.99-0.72)/(1.41-1.16)
+K_int_downstream =(1.41-(K_int_downstream_slope*0.99))+(K_int_downstream_slope*Y_tip)
+
+                                       %inner part
+for i=1:y*N
+    r_down_in(i)=((delta_r*i))/b;
+    seta_down_in(i)= seta_o_down+  r_down_in(i)*seta_twist;
+
+   v_c_in(i)= v_root+((v_ind_up-v_root)*r_down_in(i)/(y-(1/N)))
+
+    lamda_climb_in(i)=v_c_in(i)/(omga*R);
+    c_down_in(i)=(C_root)+(taper_slope*r_down_in(i)*R)
+                         %%%lift slope condition
+                         
+    V_down_in_L(i)=sqrt ((omga* (((r_down_in(i))*b)+R_cut))^2+(v_c_in(i))^2)
+    Re_down_in_L(i)= (roh*V_down_in_L(i)*c_down_in(i))/Mioh
+    if seta_down_in(i) <= 2*(pi/180)
+         if Re_down_in_L(i) < 70000
+             Cl_alpha_down_in(i)= ((0.2325/70000)* Re_down_in_L(i))*180/pi
+         else Cl_alpha_down_in(i)=((0.21+(20000*0.7/Re_down_in_L(i)))/2)*180/pi
+         end
+
+     elseif  2*(pi/180)< seta_down_in(i) <= 4*(pi/180)
+         if Re_down_in_L(i) < 70000
+             Cl_alpha_down_in(i)= ((0.152/70000)* Re_down_in_L(i))*180/pi
+         elseif 70000 <= Re_down_in_L(i) <= 150000 
+             Cl_alpha_down_in(i)=0.152*180/pi
+         else Cl_alpha_down_in(i)=((0.21+(20000*0.7/Re_down_in_L(i)))/2)*180/pi
+         end
+         
+     else Cl_alpha_down_in(i)= Cl_alpha
+
+     end  
+    
+    Lamda_down_in(i)=sqrt ((((sigma*Cl_alpha_down_in(i))/16)-(lamda_climb_in(i)/2))^2+(sigma*Cl_alpha_down_in(i)*seta_down_in(i)*r_down_in(i)/8))-((sigma*Cl_alpha_down_in(i)/16)-(lamda_climb_in(i)/2)); 
+ 
+
+  
+    %B_down_in(i)=1-((1-B_loss)*((r_down_in(i))^2)*1.5)
+    B_down_in(i) = 1-(Lamda_down_in(i)*sqrt(2)/Nb)
+    if H < 0.4 * z_venna
+    delta_Ct_down_in(i)=((Cl_alpha_down_in(i)*sigma)/2)*((seta_down_in(i)*(r_down_in(i)*B_down_in(i))^2)-((Lamda_down_in(i))*r_down_in(i)/B_down_in(i)))*(delta_r/R);
+    %delta_Ct_down_in(i)=((Cl_alpha_down_in(i)*sigma)/2)*((seta_down_in(i)*(r_down_in(i))^2)-((Lamda_down_in(i))*r_down_in(i)/B_down_in(i)))*(delta_r/R);
+
+    
+    else delta_Ct_down_in(i)=((Cl_alpha_down_in(i)*sigma)/2)*sqrt(((seta_down_in(i)*(r_down_in(i)*B_down_in(i))^2)-((Lamda_down_in(i))*r_down_in(i)/B_down_in(i)))^2)*(delta_r/R)
+        %delta_Ct_down_in(i)=((Cl_alpha_down_in(i)*sigma)/2)*sqrt(((seta_down_in(i)*(r_down_in(i))^2)-((Lamda_down_in(i))*r_down_in(i)/B_down_in(i)))^2)*(delta_r/R)
+        
+
+    end
+
+    Cl_down_in(i)=Cl_alpha_down_in(i)*(seta_down_in(i)-( Lamda_down_in(i)/r_down_in(i)));
+    
+  
+   
+    V_down_in(i)=sqrt ((omga* (((r_down_in(i))*b)+R_cut))^2+((Lamda_down_in(i)*omga* (((r_down_in(i))*b)+R_cut))+v_c_in(i))^2)
+    Re_down_in(i)= (roh*V_down_in(i)*c_down_in(i))/Mioh
+    Cd_0_down_in(i)=2/((Re_down_in(i)*0.75/1000)+35)
+   
+    cd_downin_1_o(i) = (pi/180)*(Lamda_down_in(i)+lamda_climb_in(i))/r_down_in(i)
+    cd_downin_2_o(i) = seta_down_in(i)-cd_downin_1_o(i)
+    
+    Cd_o_down_in(i) = (Cd_0_down_in(i)+(0.02*cd_downin_2_o(i))+(0.4*cd_downin_2_o(i)^2))*(delta_r/R);
+    CQ_o_down_in(i)=(k_br*sigma/4)*Cd_o_down_in(i)
+    seta_o_down=seta_down_in(i);
+end
+                                           %outer part
+
+ for i=(y*N+1):N
+    r_down_out(i)=((delta_r*i))/b;
+    seta_down_out(i)= seta_o_down+ r_down_out(i)*seta_twist;
+    v_c_c_out= v_ind_up+ (((v_ind_up-v_root)/(y-(1/N)))*y)
+    v_c_out(i)= v_c_c_out+((v_root-v_ind_up)*(r_down_out(i))/((y-(1/N))))
+    lamda_climb_out(i)=v_c_out(i)/(omga*R);
+    c_down_out(i)=(C_root)+(taper_slope*r_down_out(i)*R)
+                              
+                           %%%lift slope condition
+                         
+    V_down_out_L(i)=sqrt ((omga* (((r_down_out(i))*b)+R_cut))^2+(v_c_out(i))^2)
+    Re_down_out_L(i)= (roh*V_down_out_L(i)*c_down_out(i))/Mioh
+    if seta_down_out(i) <= 2*(pi/180)
+         if Re_down_out_L(i) < 70000
+             Cl_alpha_down_out(i)= ((0.2325/70000)* Re_down_out_L(i))*180/pi
+         else Cl_alpha_down_out(i)=((0.21+(20000*0.7/Re_down_out_L(i)))/2)*180/pi
+         end
+
+     elseif  2*(pi/180)< seta_down_out(i) <= 4*(pi/180)
+         if Re_down_out_L(i) < 70000
+             Cl_alpha_down_out(i)= ((0.152/70000)* Re_down_out_L(i))*180/pi
+         elseif 70000 <= Re_down_out_L(i) <= 150000 
+             Cl_alpha_down_out(i)=0.152*180/pi
+         else Cl_alpha_down_out(i)=((0.21+(20000*0.7/Re_down_out_L(i)))/2)*180/pi
+         end
+         
+     else Cl_alpha_down_out(i)= Cl_alpha
+
+     end  
+
+    Lamda_down_out(i)=sqrt ((((sigma*Cl_alpha_down_out(i))/16)-(lamda_climb_out(i)/2))^2+(sigma*Cl_alpha_down_out(i)*seta_down_out(i)*r_down_out(i)/8))-((sigma*Cl_alpha_down_out(i)/16)-(lamda_climb_out(i)/2)); 
+    %Lamda_down_out(i)=((Cl_alpha_down_out(i)*sigma)/16)*((sqrt (1+((32*seta_down_out(i)*r_down_out(i))/(Cl_alpha_down_out(i)*sigma))))-1);
+    B_down_out(i)=1-(Lamda_down_out(i)*sqrt(2)/Nb)
+    %B_down_out(i)=1-((1-B_loss)*((r_down_out(i))^2)*1.5)
+    delta_Ct_down_out(i)=((Cl_alpha_down_out(i)*sigma)/2)*((seta_down_out(i)*(r_down_out(i)*B_down_out(i))^2)-(Lamda_down_out(i)*r_down_out(i)/B_down_out(i)))*(delta_r/R);
+    %delta_Ct_down_out(i)=((Cl_alpha_down_out(i)*sigma)/2)*((seta_down_out(i)*(r_down_out(i))^2)-(Lamda_down_out(i)*r_down_out(i)/B_down_out(i)))*(delta_r/R);
+    %delta_Ct_down_out(i)=((Cl_alpha_down_out(i)*sigma)/2)*((seta_down_out(i)*(r_down_out(i))^2)-(Lamda_down_out(i)*r_down_out(i)/B_down_out(i)))*delta_r;
+    
+    Cl_down_out(i)=Cl_alpha_down_out(i)*(seta_down_out(i)-(Lamda_down_out(i)/r_down_out(i)));
+    
+  
+    
+    %V_down_out(i)=sqrt ((omga* (((r_down_out(i))*b)+R_cut))^2+((Lamda_down_out(i)*omga* (((r_down_out(i))*b)+R_cut))+v_c_out(i))^2)
+    V_down_out(i)=sqrt ((omga* (((r_down_out(i))*b)+R_cut))^2+((Lamda_down_out(i)*omga* (((r_down_out(i))*b)+R_cut)))^2)
+    Re_down_out(i)= (roh*V_down_out(i)*c_down_out(i))/Mioh
+    Cd_0_down_out(i)=2/((Re_down_out(i)*0.75/1000)+35)
+    %Cd_o_down_out(i) = (Cd_0_down_out(i)+(0.02*pi/180*(seta_down_out(i)-(Lamda_down_out(i)/r_down_out(i))))+(0.4*((seta_down_out(i)-(Lamda_down_out(i)/r_down_out(i)))*pi/180)^2));
+    cd_downout_1_o(i) = (Lamda_down_out(i)/r_down_out(i))*pi/180
+    cd_downout_2_o(i)= seta_down_out(i)-cd_downout_1_o(i)
+    
+    Cd_o_down_out(i) = (Cd_0_down_out(i)+(0.02*cd_downout_2_o(i))+(0.4*(cd_downout_2_o(i))^2))*(delta_r/R)
+    CQ_o_down_out(i)=(k_br*sigma/4)*Cd_o_down_out(i)
+    seta_o_down=seta_down_out(i);
+ end
+    total_delta_Ct_down_in= sum (delta_Ct_down_in)
+
+total_delta_Ct_down_out=sum (delta_Ct_down_out)
+Ct_down =(total_delta_Ct_down_in+total_delta_Ct_down_out)*Nb
+
+B_down_tot = 1-((sqrt(Ct_down))/Nb)
+%CT_down= Ct_down*B_down_tot
+CT_down= Ct_down
+delta_CQ_i_down_in= (delta_Ct_down_in.*Lamda_down_in)
+CQ_i_down_in= sum (delta_CQ_i_down_in)
+
+delta_CQ_i_down_out = (delta_Ct_down_out.*Lamda_down_out)
+CQ_i_down_out= sum (delta_CQ_i_down_out)
+
+total_CQ_o_down_in= sum (CQ_o_down_in)
+
+total_CQ_o_down_out= sum (CQ_o_down_out)
+
+%cQ_down =((CQ_i_down_in+CQ_i_down_out)*Nb*(K+B_down_tot)*K_int_downstream)+((total_CQ_o_down_in+total_CQ_o_down_out)*delta_r*Nb)
+
+
+%cQ_down =((CQ_i_down_in+CQ_i_down_out)*Nb*(K+(1/B_down_tot))*K_int_downstream)+((total_CQ_o_down_in+total_CQ_o_down_out)*delta_r*Nb)
+
+cQ_down =((CQ_i_down_in+CQ_i_down_out)*Nb*(K)*K_int_downstream)+((total_CQ_o_down_in+total_CQ_o_down_out)*Nb)
+
+CT_up_new(i) = (0.5*(1/Y_tip)*0.5*total_delta_Ct_down_in*(3+Y_tip))+(0.5*(1/Y_tip)*0.5*total_delta_Ct_down_out*(1-Y_tip))-(CT_down/Y_tip)
+
+
+elseif H < z_venna
+  v_center= v_ind_up/((Y_tip^3)*(1+v_ind_up))
+  v_root= v_center+((v_ind_up-v_center)*R_cut_factor/Y_tip)
+  %K_int_downstream_slope= (0.99-0.72)/(1.41-1.16)
+  %K_int_downstream =(1.41-(K_int_downstream_slope*0.99))+(K_int_downstream_slope*Y_tip)
+  K_int_downstream = 1.41
+
+  for i=1:N
+    r_down(i)=((delta_r*i))/b;
+    seta_down(i)= seta_o_down+  r_down(i)*seta_twist;
+
+   v_c(i)= v_root+((v_ind_up-v_root)*r_down(i)/(y-(1/N)))
+
+    lamda_climb(i)=v_c(i)/(omga*R);
+
+   
+   c_down(i)=(C_root)+(taper_slope*r_down(i)*R)
+
+                                        %%Lift slope%%
+    V_down_L(i)=sqrt ((omga* (((r_down(i))*b)+R_cut))^2+(v_c(i))^2)
+    Re_down_L(i)= (roh*V_down_L(i)*c_down(i))/Mioh                                    
+    
+     if seta_down(i) <= 2*(pi/180)
+         if Re_down_T(i) < 70000
+             Cl_alpha_down(i)= ((0.2325/70000)* Re_down_T(i))*180/pi
+         else Cl_alpha_down(i)=((0.21+(20000*0.7/Re_down_T(i)))/2)*180/pi
+         end
+
+     elseif  2*(pi/180)< seta_down(i) <= 4*(pi/180)
+         if Re_down_L(i) < 70000
+             Cl_alpha_down(i)= ((0.152/70000)* Re_down_L(i))*180/pi
+         elseif 70000 <= Re_down_L(i) <= 150000 
+             Cl_alpha_down(i)=0.152*180/pi
+         else Cl_alpha_down(i)=((0.21+(20000*0.7/Re_down_L(i)))/2)*180/pi
+         end
+         
+     else Cl_alpha_down(i)= Cl_alpha
+
+     end  
+
+    Lamda_down(i)=sqrt ((((sigma*Cl_alpha_down(i))/16)-(lamda_climb(i)/2))^2+(sigma*Cl_alpha_down(i)*seta_down(i)*r_down(i)/8))-((sigma*Cl_alpha_down(i)/16)-(lamda_climb(i)/2)); 
+ 
+   
+    %B_down_in(i)=1-((1-B_loss)*((r_down(i))^2)*1.5)
+    B_down(i)= 1-(Lamda_down(i)*sqrt(2)/Nb)
+    
+    if H < 0.4 * z_venna
+    %delta_Ct_down(i)=((Cl_alpha_down(i)*sigma)/2)*((seta_down(i)*(r_down(i)*B_down(i))^2)-((Lamda_down(i)+(lamda_climb(i)*0.5))*r_down(i)/B_down(i)))*delta_r;
+    %delta_Ct_down(i)=((Cl_alpha_down(i)*sigma)/2)*((seta_down(i)*(r_down(i))^2)-((Lamda_down(i)+(lamda_climb(i)*0.5))*r_down(i)/B_down(i)))*delta_r;
+    %delta_Ct_down_in(i)=((Cl_alpha_down(i)*sigma)/2)*((seta_down_in(i)*(r_down_in(i))^2)-((Lamda_down_in(i)+lamda_climb_in(i))*r_down_in(i)/B_down_in(i)))*delta_r;
+    delta_Ct_down(i)=((Cl_alpha_down(i)*sigma)/2)*sqrt(((seta_down(i)*(r_down(i)*B_down(i))^2)-((Lamda_down(i))*r_down(i)/B_down(i)))^2)*(delta_r/R)
+    %delta_Ct_down(i)=((Cl_alpha_down(i)*sigma)/2)*sqrt(((seta_down(i)*(r_down(i))^2)-((Lamda_down(i))*r_down(i)/B_down(i)))^2)*(delta_r/R)
+    else delta_Ct_down(i)=((Cl_alpha_down(i)*sigma)/2)*sqrt(((seta_down(i)*(r_down(i)*B_down(i))^2)-((Lamda_down(i))*r_down(i)/B_down(i)))^2)*(delta_r/R)
+        %delta_Ct_down(i)=((Cl_alpha_down(i)*sigma)/2)*sqrt(((seta_down(i)*(r_down(i))^2)-((Lamda_down(i))*r_down(i)/B_down(i)))^2)*(delta_r/R)
+
+    %delta_Ct_down_in(i)=((Cl_alpha_down(i)*sigma)/2)*((seta_down_in(i)*(r_down_in(i))^2)-((Lamda_down_in(i))*r_down_in(i)/B_down_in(i)))*delta_r
+    end
+
+    Cl_down(i)=Cl_alpha_down(i)*(seta_down(i)-( Lamda_down(i)/r_down(i)));
+    
+  
+   
+    V_down(i)=sqrt ((omga* (((r_down(i))*b)+R_cut))^2+((Lamda_down(i)*omga* (((r_down(i))*b)+R_cut))+v_c(i))^2)
+    Re_down(i)= (roh*V_down(i)*c_down(i))/Mioh
+    Cd_0_down(i)=2/((Re_down(i)*0.75/1000)+35)
+    %Cd_o_down_in(i) = (Cd_0_down_in(i)+(0.02*pi/180*(seta_down_in(i)-(Lamda_down_in(i)/r_down_in(i))))+(0.4*((seta_down_in(i)-(Lamda_down_in(i)/r_down_in(i)))*pi/180)^2));
+    cd_down_1_o(i) = (pi/180)*(Lamda_down(i)+lamda_climb(i))/r_down(i)
+    cd_down_2_o(i) = seta_down_in(i)-cd_down_1_o(i)
+    
+    Cd_o_down_(i) = (Cd_0_down_(i)+(0.02*cd_down_2_o(i))+(0.4*cd_down_2_o(i)^2))*(delta_r/R);
+    CQ_o_down(i)=(k_br*sigma/4)*Cd_o_down(i)
+    seta_o_down=seta_down(i);
+  end
+   total_Ct_down =(sum (delta_Ct_down))
+ Ct_down=total_Ct_down*Nb
+ B_down_tot = 1-((sqrt(Ct_down))/Nb)
+ %CT_down= Ct_down* B_down_tot
+ CT_down= Ct_down
+ delta_CQ_i_down=delta_Ct_down.*Lamda_down
+ CQ_i_down = sum (delta_CQ_i_down)
+ total_CQ_o_down= sum (CQ_o_down)
+ %cQ_down=(Ct_down*Nb*(K+B_down_tot)*K_int_downstream)+(total_CQ_o_down*delta_r*Nb)
+ %cQ_down=(Ct_down*Nb*(K+(1/B_down_tot))*K_int_downstream)+(total_CQ_o_down*delta_r*Nb)
+ cQ_down=(Ct_down*Nb*(K)*K_int_downstream)+(total_CQ_o_down*Nb)
+CT_up_new(i) = (0.5*(1/Y_tip)*0.5*total_delta_Ct_down*(3+Y_tip))+(0.5*(1/Y_tip)*0.5*total_delta_Ct_down*(1-Y_tip))-(CT_down/Y_tip)
+else 
+v_center= 0
+v_root= 0
+K_int_downstream=1
+for i=1:N
+     r_down(i)=((delta_r*i))/b;
+     seta_down(i)= seta_o_down+ r_down(i)*seta_twist;
+     Lamda_down(i)=((Cl_alpha*sigma)/16)*((sqrt (1+((32*seta_down(i)*r_down(i))/(Cl_alpha*sigma))))-1);
+     B_down(i) = 1-(Lamda_down(i)*sqrt(2)/Nb)
+%Nb
+     %B_down(i)=1-((1-B_loss)*((r_down(i))^2)*1.5)
+     delta_Ct_down(i)=((Cl_alpha*sigma)/2)*((seta_down(i)*(r_down(i)*B_down(i))^2)-(Lamda_down(i)*r_down(i)/B_down(i)))*(delta_r/R) ;
+     %delta_Ct_down(i)=((Cl_alpha*sigma)/2)*((seta_down(i)*(r_down(i))^2)-(Lamda_down(i)*r_down(i)/B_down(i)))*(delta_r/R) ;
+     
+     
+     Cl_down(i)=Cl_alpha*(seta_down(i)-(Lamda_down(i)/r_down(i)));
+     
+     c_down(i)=(C_root)+(taper_slope*r_down(i)*R)
+    
+     V_down(i)= sqrt ((omga* (((r_down(i))*b)+R_cut))^2+(Lamda_down(i)*omga* (((r_down(i))*b)+R_cut))^2)
+     Re_down(i)= (roh*V_down(i)*c_down(i))/Mioh
+     Cd_0_down(i)=2/((Re_down(i)*0.75/1000)+35)
+     %Cd_o_down(i) = (Cd_0_down(i)+(0.02*(seta_down(i)-(Lamda_down(i)/r_down(i)))*pi/180)+(0.4*((seta_down(i)-(Lamda_down(i)/r_down(i)))*pi/180)^2));
+     cd_down_1_o(i)= (Lamda_down(i)/r_down(i))*pi/180
+     cd_down_2_o(i) = seta_down(i)-cd_down_1_o(i)
+     Cd_o_down(i) = (Cd_0_down(i)+(0.02*cd_down_2_o(i))+(0.4*(cd_down_2_o(i))^2))*(delta_r/R);
+     CQ_o_down(i)=(k_br*sigma/4)*Cd_o_down(i)
+     seta_o_up = seta_up(i);
+ end
+ total_Ct_down =(sum (delta_Ct_down))
+ Ct_down=total_Ct_down*Nb
+ B_down_tot = 1-((sqrt(Ct_down))/Nb)
+ %CT_down= Ct_down* B_down_tot
+ CT_down= Ct_down
+ delta_CQ_i_down=delta_Ct_down.*Lamda_down
+ CQ_i_down = sum (delta_CQ_i_down)
+ total_CQ_o_down= sum (CQ_o_down)
+ %cQ_down=(Ct_down*Nb*(K+B_down_tot)*K_int_downstream)+(total_CQ_o_down*delta_r*Nb)
+ %cQ_down=(Ct_down*Nb*(K+(1/B_down_tot))*K_int_downstream)+(total_CQ_o_down*delta_r*Nb)
+ cQ_down=(Ct_down*Nb*(K)*K_int_downstream)+(total_CQ_o_down*Nb)
+ CT_up_new(i) = CT_up_old
+
+end
+CT_up_old=CT_up_new(i)
+
+
+end
+
+
+                                          %%%%%coaxial parameter%%%%%
+ 
+ CT = (CT_down+ CT_up_new(NN))
+ cp = cQ_down+ cQ_up
+
+
+
+ %figure (101); 
+ %plot(r_up,Lamda_up,'ro')
+ %plot(r_down_in,v_c_in)
+ %plot(r_down_out,v_c_out)
+ %grid on;

@@ -1,0 +1,44 @@
+                         %%%Co-axial Rotor tip vortex radial displacement%%%
+    K_1_tip = 0.25*((sqrt(CT_up(k)^2)/(sigma*2))+(0.001*seta_twist))
+    Zeta_passage = 2*pi/Nb
+    Z_Tip_passage = K_1_tip*Zeta_passage
+    K_2_tip = (1+(0.01*seta_twist)) * sqrt(sqrt(CT_up(k)^2))
+    A_tip = 0.145+(27*sqrt(CT_up(k)^2))
+
+ 
+    Z_Tip_passage =(Z_Tip_passage+Z_Tip_passage_s)/2
+    Y_tip_correction =(1+(V_D/(v_center_c+v_ind)))^(1/3)
+if Z_Tip_passage > H
+   Zeta_age= (H/K_1_tip)*180/pi
+else 
+   Zeta_age= (((H-Z_Tip_passage)/K_2_tip)+(Zeta_passage))*180/pi
+end
+
+%Venna Region for Co-axial info region when radial displacement almost equal sqrt(2)
+
+Zeta_age_vena = (180/pi)*-log((0.71-0.702)/(1-0.702))/(A_tip)
+Y_tip_venna= 0.702+(1-0.702)*exp(-A_tip*(Zeta_age_vena*pi/180))
+z_venna = Z_Tip_passage + K_2_tip*((Zeta_age_vena*pi/180)-Zeta_passage)
+
+%Correction Term represent the decrease in area due to the downstream rotor
+
+Lmada_induced_Tip_c= sqrt(sqrt(Ct_up^2)/2)/Tip_Thrust_r_s 
+v_ind_up_c=(Lmada_induced_Tip_c)*omga*R 
+%V_2 = (1+(V_D_old_c/(v_ind_up_c+v_center_s)))^(1/3)
+%V_2 = (1+(V_D_old/(v_ind_up_c+v_center_c)))^(1/3)
+V_1 =(1+(V_D/(v_center_c+v_ind)))^(1/3)
+%V_1=round(V_2,1)
+%V_1=1
+%Ytip for Co-axial Rotot (convergance divargance where the throat at venna region) 
+
+if Zeta_age< Zeta_age_vena
+  % Y_tip = (0.702+(1-0.702)*exp(-A_tip*(Zeta_age*pi/180)))/V_1
+  Y_tip = (0.78+(1-0.78)*exp(-A_tip*(Zeta_age*pi/180)))/V_1
+else
+    Y_tip_c = (Y_tip_venna +((0.2^(1/A_tip))*exp(A_tip*(Zeta_age*pi/180))))/V_1
+    if Y_tip_c<1
+       Y_tip =Y_tip_c
+    else
+        Y_tip =Y_tip_s
+    end
+end
